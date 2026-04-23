@@ -11,6 +11,7 @@ from homeassistant.const import (
     STATE_UNAVAILABLE,
     EntityCategory,
     UnitOfLength,
+    UnitOfTemperature,
 )
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
@@ -78,6 +79,9 @@ async def async_setup_entry(
             entities.append(BermudaSensorRssi(coordinator, entry, address))
             entities.append(BermudaSensorAreaLastSeen(coordinator, entry, address))
             entities.append(BermudaSensorAreaSwitchReason(coordinator, entry, address))
+            entities.append(BermudaSensorVcc(coordinator, entry, address))
+            entities.append(BermudaSensorTemperature(coordinator, entry, address))
+            entities.append(BermudaSensorAdcVoltage(coordinator, entry, address))
 
             # _LOGGER.debug("Sensor received new_device signal for %s", address)
             # We set update before add to False because we are being
@@ -303,6 +307,104 @@ class BermudaSensorRssi(BermudaSensor):
     @property
     def state_class(self):
         """These are graphable measurements."""
+        return SensorStateClass.MEASUREMENT
+
+
+class BermudaSensorVcc(BermudaSensor):
+    """Sensor for IN100 chip supply voltage."""
+
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    @property
+    def unique_id(self):
+        return f"{self._device.unique_id}_vcc"
+
+    @property
+    def name(self):
+        return "VCC"
+
+    @property
+    def native_value(self):
+        return self._device.in100_vcc
+
+    @property
+    def entity_registry_enabled_default(self) -> bool:
+        return True
+
+    @property
+    def device_class(self):
+        return SensorDeviceClass.VOLTAGE
+
+    @property
+    def native_unit_of_measurement(self):
+        return "V"
+
+    @property
+    def state_class(self):
+        return SensorStateClass.MEASUREMENT
+
+
+class BermudaSensorTemperature(BermudaSensor):
+    """Sensor for IN100 temperature telemetry."""
+
+    @property
+    def unique_id(self):
+        return f"{self._device.unique_id}_temperature"
+
+    @property
+    def name(self):
+        return "Temperature"
+
+    @property
+    def native_value(self):
+        return self._device.in100_temp_c
+
+    @property
+    def entity_registry_enabled_default(self) -> bool:
+        return True
+
+    @property
+    def device_class(self):
+        return SensorDeviceClass.TEMPERATURE
+
+    @property
+    def native_unit_of_measurement(self):
+        return UnitOfTemperature.CELSIUS
+
+    @property
+    def state_class(self):
+        return SensorStateClass.MEASUREMENT
+
+
+class BermudaSensorAdcVoltage(BermudaSensor):
+    """Sensor for IN100 ADC voltage telemetry."""
+
+    @property
+    def unique_id(self):
+        return f"{self._device.unique_id}_adc_voltage"
+
+    @property
+    def name(self):
+        return "ADC Voltage"
+
+    @property
+    def native_value(self):
+        return self._device.in100_adc_voltage
+
+    @property
+    def entity_registry_enabled_default(self) -> bool:
+        return True
+
+    @property
+    def device_class(self):
+        return SensorDeviceClass.VOLTAGE
+
+    @property
+    def native_unit_of_measurement(self):
+        return "V"
+
+    @property
+    def state_class(self):
         return SensorStateClass.MEASUREMENT
 
 
