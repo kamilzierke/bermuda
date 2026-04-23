@@ -2,9 +2,11 @@
 Tests for BermudaDevice class in bermuda_device.py.
 """
 
-import pytest
 from unittest.mock import MagicMock, patch
+
+import pytest
 from homeassistant.components.bluetooth import BaseHaScanner, BaseHaRemoteScanner
+
 from custom_components.bermuda.bermuda_device import BermudaDevice
 from custom_components.bermuda.const import ICON_DEFAULT_AREA, ICON_DEFAULT_FLOOR
 
@@ -15,6 +17,7 @@ def mock_coordinator():
     coordinator = MagicMock()
     coordinator.options = {}
     coordinator.hass_version_min_2025_4 = True
+    coordinator.get_manufacturer_from_id.return_value = (None, True)
     return coordinator
 
 
@@ -55,6 +58,12 @@ def test_bermuda_device_initialization(bermuda_device):
     assert bermuda_device.area_icon == ICON_DEFAULT_AREA
     assert bermuda_device.floor_icon == ICON_DEFAULT_FLOOR
     assert bermuda_device.zone == "not_home"
+    assert bermuda_device.in100_vcc is None
+    assert bermuda_device.in100_temp_c is None
+    assert bermuda_device.in100_adc_voltage is None
+    assert bermuda_device.in100_raw_payload_hex is None
+    assert bermuda_device.in100_last_payload_len is None
+    assert bermuda_device.in100_detected is False
 
 
 def test_async_as_scanner_init(bermuda_scanner, mock_scanner):
@@ -110,6 +119,75 @@ def test_process_advertisement(bermuda_device, bermuda_scanner):
 #     mock_advert.manufacturer_data = [{"004C": b"\x02\x15"}]
 #     bermuda_device.process_manufacturer_data(mock_advert)
 #     assert bermuda_device.manufacturer == "Apple Inc."
+
+
+def test_process_manufacturer_data_in100_payload(bermuda_device):
+    """Decode the latest IN100 payload from manufacturer data 0x0505."""
+    mock_advert = MagicMock()
+    mock_advert.service_uuids = []
+    mock_advert.manufacturer_data = [{0x0505: bytes.fromhex("680A4C0C6D0000")}]
+
+    bermuda_device.process_manufacturer_data(mock_advert)
+
+    assert bermuda_device.in100_vcc == 3.25
+    assert bermuda_device.in100_temp_c == 26.36
+    assert bermuda_device.in100_adc_voltage == 3.181
+    assert bermuda_device.in100_raw_payload_hex == "680a4c0c6d0000"
+    assert bermuda_device.in100_last_payload_len == 7
+    assert bermuda_device.in100_detected is True
+    assert bermuda_device.manufacturer == "InPlay / DFRobot"
+
+
+def test_process_manufacturer_data_in100_payload_ignores_trailing_bytes(bermuda_device):
+    """Only the first five bytes of the telemetry payload should be decoded."""
+    mock_advert = MagicMock()
+    mock_advert.service_uuids = []
+    mock_advert.manufacturer_data = [{0x0505: bytes.fromhex("680A740C6DFFFF")}]
+
+    bermuda_device.process_manufacturer_data(mock_advert)
+
+    assert bermuda_device.in100_vcc == 3.25
+    assert bermuda_device.in100_temp_c == 26.76
+    assert bermuda_device.in100_adc_voltage == 3.181
+
+
+def test_process_manufacturer_data_in100_short_payload_resets_values(bermuda_device):
+    """Malformed short IN100 payloads should not raise and should clear parsed values."""
+    bermuda_device.in100_vcc = 9.99
+    bermuda_device.in100_temp_c = 99.99
+    bermuda_device.in100_adc_voltage = 9.99
+
+    mock_advert = MagicMock()
+    mock_advert.service_uuids = []
+    mock_advert.manufacturer_data = [{0x0505: bytes.fromhex("680A4C")}]
+
+    bermuda_device.process_manufacturer_data(mock_advert)
+
+    assert bermuda_device.in100_vcc is None
+    assert bermuda_device.in100_temp_c is None
+    assert bermuda_device.in100_adc_voltage is None
+    assert bermuda_device.in100_raw_payload_hex == "680a4c"
+    assert bermuda_device.in100_last_payload_len == 3
+    assert bermuda_device.in100_detected is True
+
+
+def test_process_manufacturer_data_in100_uses_only_latest_history_entry(bermuda_device):
+    """Ignore stale 0x0505 payloads outside the latest manufacturer data entry."""
+    mock_advert = MagicMock()
+    mock_advert.service_uuids = []
+    mock_advert.manufacturer_data = [
+        {0x004C: bytes.fromhex("0215" + "00112233445566778899AABBCCDDEEFF" + "0001" + "0002" + "C5")},
+        {0x0505: bytes.fromhex("680A4C0C6D0000")},
+    ]
+
+    bermuda_device.process_manufacturer_data(mock_advert)
+
+    assert bermuda_device.in100_vcc is None
+    assert bermuda_device.in100_temp_c is None
+    assert bermuda_device.in100_adc_voltage is None
+    assert bermuda_device.beacon_uuid == "00112233445566778899aabbccddeeff"
+    assert bermuda_device.beacon_major == "1"
+    assert bermuda_device.beacon_minor == "2"
 
 
 def test_to_dict(bermuda_device):
