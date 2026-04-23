@@ -118,6 +118,12 @@ class BermudaDevice(dict):
 
         self.zone: str = STATE_NOT_HOME  # STATE_HOME or STATE_NOT_HOME
         self.manufacturer: str | None = None
+        self.in100_vcc: float | None = None
+        self.in100_temp_c: float | None = None
+        self.in100_adc_voltage: float | None = None
+        self.in100_raw_payload_hex: str | None = None
+        self.in100_last_payload_len: int | None = None
+        self.in100_detected: bool = False
         self._hascanner: BaseHaRemoteScanner | BaseHaScanner | None = None  # HA's scanner
         self._is_scanner: bool = False
         self._is_remote_scanner: bool | None = None
@@ -807,6 +813,40 @@ class BermudaDevice(dict):
                         # for the sources.
                         self.make_name()
                         self._coordinator.register_ibeacon_source(self)
+
+        latest_manudict = advert.manufacturer_data[0] if advert.manufacturer_data else None
+        if latest_manudict is None:
+            return
+
+        man_data = latest_manudict.get(0x0505)
+        if man_data is None:
+            return
+
+        self.in100_raw_payload_hex = man_data.hex()
+        self.in100_last_payload_len = len(man_data)
+        self.in100_detected = True
+
+        applied_fallback_name = False
+        if self.manufacturer is None:
+            self.manufacturer = "InPlay / DFRobot"
+            applied_fallback_name = True
+
+        self.in100_vcc = None
+        self.in100_temp_c = None
+        self.in100_adc_voltage = None
+
+        if len(man_data) < 5:
+            if applied_fallback_name:
+                self.make_name()
+            return
+
+        payload = man_data[:5]
+        self.in100_vcc = payload[0] / 32.0
+        self.in100_temp_c = int.from_bytes(payload[1:3], byteorder="big", signed=True) / 100.0
+        self.in100_adc_voltage = int.from_bytes(payload[3:5], byteorder="big", signed=False) / 1000.0
+
+        if applied_fallback_name:
+            self.make_name()
 
     def to_dict(self):
         """Convert class to serialisable dict for dump_devices."""
