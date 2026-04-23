@@ -8,6 +8,28 @@
 
 - (eventually) Triangulate device positions! Like, on a map. Maybe.
 
+## Fork-specific DFRobot support
+
+This fork adds native support for custom BLE payloads emitted by DFRobot/InPlay beacons that use manufacturer ID `0x0505`.
+
+Why this fork exists:
+
+- My DFRobot beacon is visible to Bermuda as a normal BLE device, but it also exposes useful telemetry in its manufacturer payload.
+- Upstream Bermuda already has the right device/discovery model for these beacons, so the goal here is to extend the existing integration rather than create a separate one.
+- The beacon payload used here contains `VCC`, `Temperature`, and `ADC Voltage` values, and the ADC field is used by the beacon as battery voltage telemetry.
+
+What was changed in this fork:
+
+- Bermuda now decodes the latest `0x0505` manufacturer payload directly on the existing Bermuda device.
+- The existing Bermuda sensor platform exposes three additional sensors on that same device: `VCC`, `Temperature`, and `ADC Voltage`.
+- The decoder intentionally uses only the first 5 payload bytes, because some burned beacons may include malformed or duplicated trailing bytes while the first 5 bytes remain valid.
+
+What was not changed:
+
+- No new integration was added.
+- No extra dependency was added.
+- Bermuda's normal discovery, config flow, iBeacon handling, and Private BLE logic were left intact.
+
 
 [![GitHub Release][releases-shield]][releases]
 [![GitHub Activity][commits-shield]][commits]
